@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>COUNT/REACH Review Generator</title>
+<style>
+  :root{
+    --ink:#1c2530; --paper:#f4f6f8; --card:#ffffff;
+    --navy:#1f3a5f; --navy-deep:#152a45; --line:#dfe4ea; --muted:#6b7684; --good:#2f6b4f;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:"Inter","Segoe UI",system-ui,sans-serif;
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:32px 16px;
+  }
+  .wrap{ width:100%; max-width:560px; }
+  .eyebrow{
+    font-family:"Courier New",monospace; font-size:12px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--muted); margin-bottom:10px;
+  }
+  h1{ font-family:Georgia,serif; font-size:30px; line-height:1.15; margin:0 0 8px; color:var(--navy-deep); }
+  p.sub{ color:var(--muted); font-size:15px; line-height:1.5; margin:0 0 28px; max-width:48ch; }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:10px; padding:28px; box-shadow:0 1px 2px rgba(20,30,45,.04); }
+  .flash{ background:#fdecec; border:1px solid #f3c6c6; color:#8a2c2c; font-size:13.5px; padding:10px 12px; border-radius:6px; margin-bottom:18px; }
+  .dropzone{
+    border:1.5px dashed var(--line); border-radius:8px; padding:34px 20px; text-align:center;
+    cursor:pointer; transition:border-color .15s ease, background .15s ease; position:relative;
+  }
+  .dropzone:hover, .dropzone.drag{ border-color:var(--navy); background:#f7f9fc; }
+  .dropzone input[type=file]{ position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .dz-label{ font-size:14.5px; color:var(--ink); font-weight:600; }
+  .dz-sub{ font-size:12.5px; color:var(--muted); margin-top:4px; }
+  #filename{ margin-top:12px; font-size:13px; color:var(--good); font-weight:600; display:none; }
+  button{
+    width:100%; margin-top:20px; background:var(--navy); color:#fff; border:none;
+    border-radius:7px; padding:13px 16px; font-size:14.5px; font-weight:600; cursor:pointer; transition:background .15s ease;
+  }
+  button:hover{ background:var(--navy-deep); }
+  button:disabled{ opacity:.6; cursor:not-allowed; }
+  .foot{ margin-top:16px; font-size:12px; color:var(--muted); text-align:center; line-height:1.5; }
+  #loading{ display:none; align-items:center; gap:8px; justify-content:center; margin-top:16px; font-size:13px; color:var(--muted); }
+  .dot{ width:5px; height:5px; border-radius:50%; background:var(--navy); animation:pulse 1.1s infinite ease-in-out; }
+  .dot:nth-child(2){animation-delay:.15s;} .dot:nth-child(3){animation-delay:.3s;}
+  @keyframes pulse{ 0%,80%,100%{opacity:.25; transform:scale(0.8);} 40%{opacity:1; transform:scale(1);} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Template-Locked · Evidence-Based · One Account at a Time</div>
+  <h1>Turn the deck into a COUNT/REACH review — without breaking the format.</h1>
+  <p class="sub">Upload a QBR, WCSR, or business review deck. The AI extracts and scores the content; your COUNT/REACH template's design is never touched.</p>
+
+  <div class="card">
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}{% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}{% endif %}
+    {% endwith %}
+
+    <form id="uploadForm" action="/generate" method="post" enctype="multipart/form-data">
+      <label class="dropzone" id="dropzone">
+        <input type="file" name="report_file" id="fileInput" accept=".pptx,.pdf" required />
+        <div class="dz-label">Drop a file here, or click to choose</div>
+        <div class="dz-sub">.pptx or .pdf</div>
+        <div id="filename"></div>
+      </label>
+
+      <button type="submit" id="submitBtn">Generate COUNT Review</button>
+      <div id="loading">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        &nbsp;Extracting, scoring, and filling the template…
+      </div>
+    </form>
+  </div>
+
+  <div class="foot">
+    The only outbound call is to your own Azure OpenAI deployment. The template's design never changes.
+  </div>
+</div>
+
+<script>
+  const fileInput = document.getElementById('fileInput');
+  const filenameEl = document.getElementById('filename');
+  const dz = document.getElementById('dropzone');
+  const form = document.getElementById('uploadForm');
+  const btn = document.getElementById('submitBtn');
+  const loading = document.getElementById('loading');
+  let errorBox = null;
+
+  function showError(message) {
+    if (!errorBox) {
+      errorBox = document.createElement('div');
+      errorBox.className = 'flash';
+      form.parentNode.insertBefore(errorBox, form);
+    }
+    errorBox.textContent = message;
+    errorBox.style.display = 'block';
+  }
+  function clearError() { if (errorBox) errorBox.style.display = 'none'; }
+  function resetButton() {
+    btn.disabled = false; btn.textContent = "Generate COUNT Review"; loading.style.display = 'none';
+  }
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length){
+      filenameEl.textContent = "Selected: " + fileInput.files[0].name;
+      filenameEl.style.display = 'block';
+    }
+  });
+  ['dragenter','dragover'].forEach(evt=>{ dz.addEventListener(evt, e=>{ e.preventDefault(); dz.classList.add('drag'); }); });
+  ['dragleave','drop'].forEach(evt=>{ dz.addEventListener(evt, e=>{ e.preventDefault(); dz.classList.remove('drag'); }); });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearError();
+    if (!fileInput.files.length) { showError("Please choose a file first."); return; }
+
+    btn.disabled = true; btn.textContent = "Working…"; loading.style.display = 'flex';
+    const formData = new FormData(form);
+
+    try {
+      const res = await fetch('/generate', { method: 'POST', body: formData });
+      if (!res.ok) {
+        let message = "Something went wrong. Please try again.";
+        try { const data = await res.json(); if (data && data.error) message = data.error; } catch (_) {}
+        showError(message); resetButton(); return;
+      }
+      const blob = await res.blob();
+      let filename = "COUNT_Review.pptx";
+      const disposition = res.headers.get('Content-Disposition');
+      if (disposition) { const match = disposition.match(/filename="?([^"]+)"?/); if (match) filename = match[1]; }
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      window.URL.revokeObjectURL(url);
+
+      btn.textContent = "Done — generate another?";
+      loading.style.display = 'none'; btn.disabled = false;
+      fileInput.value = ""; filenameEl.style.display = 'none';
+    } catch (err) {
+      showError("Network error — please try again.");
+      resetButton();
+    }
+  });
+</script>
+</body>
+</html>
